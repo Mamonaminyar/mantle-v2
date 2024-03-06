@@ -43,7 +43,7 @@ contract L2ToL1MessagePasser is Semver {
     /**
      * @notice A unique value hashed with each withdrawal.
      */
-    uint240 internal msgNonce;
+    uint240 internal _msgNonce;
 
     /**
      * @notice Emitted any time a withdrawal is initiated.
@@ -146,7 +146,7 @@ contract L2ToL1MessagePasser is Semver {
         );
 
         unchecked {
-            ++msgNonce;
+            ++_msgNonce;
         }
     }
 
@@ -158,6 +158,6 @@ contract L2ToL1MessagePasser is Semver {
      * @return Nonce of the next message to be sent, with added message version.
      */
     function messageNonce() public view returns (uint256) {
-        return Encoding.encodeVersionedNonce(msgNonce, MESSAGE_VERSION);
+        return Encoding.encodeVersionedNonce(_msgNonce, MESSAGE_VERSION);
     }
 }
