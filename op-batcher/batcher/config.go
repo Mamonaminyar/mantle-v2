@@ -55,6 +55,7 @@ type Config struct {
 	DataStoreDuration              uint64
 	GraphPollingDuration           time.Duration
 	RollupMaxSize                  uint64
+	EigenDARollupMaxSize           uint64
 	MantleDaNodes                  int
 	DataLayrServiceManagerAddr     common.Address
 	DataLayrServiceManagerContract *bindings.ContractDataLayrServiceManager
@@ -124,6 +125,9 @@ type CLIConfig struct {
 
 	//RollupMaxSize is the maximum size of tx data that can be rollup to MantleDA at one time
 	RollupMaxSize uint64
+
+	//EigenDARollupMaxSize is the maximum size of tx data that can be rollup to EigenDA at one time
+	EigenDARollupMaxSize uint64
 
 	//The number of MantleDA nodes
 	MantleDaNodes int
@@ -209,6 +213,7 @@ func NewConfig(ctx *cli.Context) CLIConfig {
 		GraphPollingDuration:   ctx.GlobalDuration(flags.GraphPollingDurationFlag.Name),
 		GraphProvider:          ctx.GlobalString(flags.GraphProviderFlag.Name),
 		RollupMaxSize:          ctx.GlobalUint64(flags.RollUpMaxSizeFlag.Name),
+		EigenDARollupMaxSize:   ctx.GlobalUint64(flags.EigenDARollupMaxSizeFlag.Name),
 		MantleDaNodes:          ctx.GlobalInt(flags.MantleDaNodeFlag.Name),
 		Stopped:                ctx.GlobalBool(flags.StoppedFlag.Name),
 		TxMgrConfig:            txmgr.ReadCLIConfig(ctx),

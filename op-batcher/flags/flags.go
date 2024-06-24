@@ -69,6 +69,13 @@ var (
 		Value:  31600, // ktz for order is 3000
 		EnvVar: opservice.PrefixEnvVar(EnvVarPrefix, "ROLLUP_MAX_SIZE"),
 	}
+	EigenDARollupMaxSizeFlag = cli.Uint64Flag{
+		Name:   "eigen-da-rollup-max-size",
+		Usage:  "Each rollup data to EigenDA maximum limit, if the rollup data is greater than the value, rollup data will submit to blob transaction",
+		Value:  2_000_000, // ktz for order is 3000
+		EnvVar: opservice.PrefixEnvVar(EnvVarPrefix, "EIGEN_DA_ROLLUP_MAX_SIZE"),
+	}
+
 	MantleDaNodeFlag = cli.IntFlag{
 		Name:   "mantle-da-node",
 		Usage:  "The number of nodes in MantleDA",
@@ -136,6 +143,7 @@ var optionalFlags = []cli.Flag{
 	GraphPollingDurationFlag,
 	GraphProviderFlag,
 	RollUpMaxSizeFlag,
+	EigenDARollupMaxSizeFlag,
 	MantleDaNodeFlag,
 }
 

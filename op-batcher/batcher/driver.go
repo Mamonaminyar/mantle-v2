@@ -97,6 +97,7 @@ func NewBatchSubmitterFromCLIConfig(cfg CLIConfig, l log.Logger, m metrics.Metri
 		DataStoreDuration:      cfg.DataStoreDuration,
 		GraphPollingDuration:   cfg.GraphPollingDuration,
 		RollupMaxSize:          cfg.RollupMaxSize,
+		EigenDARollupMaxSize:   cfg.EigenDARollupMaxSize,
 		MantleDaNodes:          cfg.MantleDaNodes,
 		Rollup:                 rcfg,
 		Channel: ChannelConfig{
