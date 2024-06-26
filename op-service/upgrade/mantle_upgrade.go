@@ -12,10 +12,11 @@ type UpgradeChainConfig struct {
 // chain config
 var (
 	// Mantle chain_id
-	MantleMainnetChainId   = big.NewInt(5000)
-	MantleSepoliaChainId   = big.NewInt(5003)
-	MantleSepoliaQAChainId = big.NewInt(5003003)
-	MantleLocalChainId     = big.NewInt(17)
+	MantleMainnetChainId    = big.NewInt(5000)
+	MantleSepoliaChainId    = big.NewInt(5003)
+	MantleSepoliaQAChainId  = big.NewInt(5003003)
+	MantleSepoliaQA6ChainId = big.NewInt(5003006)
+	MantleLocalChainId      = big.NewInt(17)
 )
 
 var (
@@ -30,6 +31,10 @@ var (
 	MantleSepoliaQAUpgradeConfig = UpgradeChainConfig{
 		ChainID:              MantleSepoliaQAChainId,
 		EigenDaUpgradeHeight: big.NewInt(3274000),
+	}
+	MantleSepoliaQA6UpgradeConfig = UpgradeChainConfig{
+		ChainID:              MantleSepoliaQA6ChainId,
+		EigenDaUpgradeHeight: big.NewInt(381800),
 	}
 	MantleLocalUpgradeConfig = UpgradeChainConfig{
 		ChainID:              MantleLocalChainId,
@@ -51,6 +56,10 @@ func GetUpgradeConfigForMantle(chainID *big.Int) *UpgradeChainConfig {
 		return &MantleSepoliaUpgradeConfig
 	case MantleSepoliaQAChainId.Int64():
 		return &MantleSepoliaQAUpgradeConfig
+	case MantleSepoliaQAChainId.Int64():
+		return &MantleSepoliaQAUpgradeConfig
+	case MantleSepoliaQA6ChainId.Int64():
+		return &MantleSepoliaQA6UpgradeConfig
 	case MantleLocalChainId.Int64():
 		return &MantleLocalUpgradeConfig
 	default:
