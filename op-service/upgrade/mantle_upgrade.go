@@ -56,8 +56,6 @@ func GetUpgradeConfigForMantle(chainID *big.Int) *UpgradeChainConfig {
 		return &MantleSepoliaUpgradeConfig
 	case MantleSepoliaQAChainId.Int64():
 		return &MantleSepoliaQAUpgradeConfig
-	case MantleSepoliaQAChainId.Int64():
-		return &MantleSepoliaQAUpgradeConfig
 	case MantleSepoliaQA6ChainId.Int64():
 		return &MantleSepoliaQA6UpgradeConfig
 	case MantleLocalChainId.Int64():
