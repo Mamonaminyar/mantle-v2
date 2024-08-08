@@ -212,98 +212,124 @@ func (l *BatchSubmitter) loopEigenDa() (bool, error) {
 		return true, nil
 	}
 
-	var err error
-	var wrappedData []byte
-
 	daData, err := l.txAggregatorForEigenDa()
 	if err != nil {
 		l.log.Error("loopEigenDa txAggregatorForEigenDa err", "err", err)
 		return false, err
 	}
 
-	currentL1, err := l.l1Tip(l.killCtx)
-	if err != nil {
-		l.log.Warn("loopEigenDa l1Tip", "err", err)
-		return false, err
-	}
+	// currentL1, err := l.l1Tip(l.killCtx)
+	// if err != nil {
+	// 	l.log.Warn("loopEigenDa l1Tip", "err", err)
+	// 	return false, err
+	// }
 
 	l.log.Info("disperseEigenDaData", "skip da rpc", l.Config.SkipEigenDaRpc)
+	unconfirmedTxIDCopy := make([]frameID, len(l.state.daUnConfirmedTxID))
+	copy(unconfirmedTxIDCopy, l.state.daUnConfirmedTxID)
 
-	eigendaSuccess := false
-	if !l.Config.SkipEigenDaRpc {
-		timeoutTime := time.Now().Add(l.EigenDA.StatusQueryTimeout)
-		for retry := 0; retry < EigenRPCRetryNum; retry++ {
-			l.metr.RecordDaRetry(int32(retry))
-			wrappedData, err = l.disperseEigenDaData(daData)
-			if err == nil && len(wrappedData) > 0 {
-				eigendaSuccess = true
-				break
+	go func(daUnConfirmedTxID []frameID) {
+		var err error
+		var wrappedData []byte
+		var eigendaSuccess = false
+		if !l.Config.SkipEigenDaRpc {
+			timeoutTime := time.Now().Add(l.EigenDA.StatusQueryTimeout)
+			for retry := 0; retry < EigenRPCRetryNum; retry++ {
+				l.metr.RecordDaRetry(int32(retry))
+				wrappedData, err = l.disperseEigenDaData(daData)
+				if err == nil && len(wrappedData) > 0 {
+					eigendaSuccess = true
+					break
+				}
+
+				if time.Now().After(timeoutTime) {
+					l.log.Warn("loopEigenDa disperseEigenDaData timeout", "retry time", retry, "err", err)
+					break
+				}
+
+				l.log.Warn("loopEigenDa disperseEigenDaData err,need to try again", "retry time", retry, "err", err)
+				time.Sleep(5 * time.Second)
 			}
-
-			if time.Now().After(timeoutTime) {
-				l.log.Warn("loopEigenDa disperseEigenDaData timeout", "retry time", retry, "err", err)
-				break
-			}
-
-			l.log.Warn("loopEigenDa disperseEigenDaData err,need to try again", "retry time", retry, "err", err)
-			time.Sleep(5 * time.Second)
 		}
-	}
 
-	var candidates []*txmgr.TxCandidate
-	if eigendaSuccess {
-		candidate := l.calldataTxCandidate(wrappedData)
-		candidates = append(candidates, candidate)
-	} else {
-		if blobCandidates, err := l.blobTxCandidates(daData); err != nil {
-			l.log.Warn("failed to create blob tx candidate", "err", err)
-			return false, err
+		var candidates []*txmgr.TxCandidate
+		if eigendaSuccess {
+			candidate := l.calldataTxCandidate(wrappedData)
+			candidates = append(candidates, candidate)
 		} else {
-			candidates = append(candidates, blobCandidates...)
-			l.metr.RecordEigenDAFailback(len(blobCandidates))
-		}
-	}
-
-	var lastReceipt *types.Receipt
-	var successTxs []ecommon.Hash
-	for loopRetry := 0; loopRetry < DaLoopRetryNum; loopRetry++ {
-		l.metr.RecordRollupRetry(int32(loopRetry))
-		failedIdx := 0
-		for idx, tx := range candidates {
-			lastReceipt, err = l.txMgr.Send(l.killCtx, *tx)
-			if err != nil || lastReceipt.Status == types.ReceiptStatusFailed {
-				l.log.Warn("failed to send tx candidate", "err", err)
-				break
+			if blobCandidates, err := l.blobTxCandidates(daData); err != nil {
+				l.log.Warn("failed to create blob tx candidate", "err", err)
+				l.disperseResult <- disperseResult{nil, nil, err}
+				return
+			} else {
+				candidates = append(candidates, blobCandidates...)
+				l.metr.RecordEigenDAFailback(len(blobCandidates))
 			}
-			successTxs = append(successTxs, lastReceipt.TxHash)
-			failedIdx = idx + 1
 		}
-		candidates = candidates[failedIdx:]
+		l.disperseResult <- disperseResult{candidates, daUnConfirmedTxID, nil}
+	}(unconfirmedTxIDCopy)
 
-		if len(candidates) > 0 {
-			l.log.Warn("failed to rollup", "err", err, "retry time", loopRetry)
-		} else {
-			l.log.Info("rollup success", "success txs", successTxs)
-			break
-		}
+	// delete all unconfirmed tx
+	for _, id := range l.state.daUnConfirmedTxID {
+		//l.state.TxConfirmed(id, l1block)
+		l.daTxDataConfirmed(id)
 	}
 
-	if len(candidates) > 0 {
-		err = fmt.Errorf("failed to rollup %d tx candidates", len(candidates))
-		l.log.Error("failed to rollup", "err", err)
-		l.metr.RecordBatchTxConfirmDataFailed()
-		return false, err
-	}
+	for finished := false; !finished; {
+		select {
+		case result := <-l.disperseResult:
+			var candidates, daUnConfirmedTxID, err = result.txs, result.daUnConfirmedTxID, result.err
+			if err != nil {
+				l.log.Error("get candidates err", "err", err)
+				return false, err
+			}
+			var lastReceipt *types.Receipt
+			var successTxs []ecommon.Hash
+			for loopRetry := 0; loopRetry < DaLoopRetryNum; loopRetry++ {
+				l.metr.RecordRollupRetry(int32(loopRetry))
+				failedIdx := 0
+				for idx, tx := range candidates {
+					lastReceipt, err = l.txMgr.Send(l.killCtx, *tx)
+					if err != nil || lastReceipt.Status == types.ReceiptStatusFailed {
+						l.log.Warn("failed to send tx candidate", "err", err)
+						break
+					}
+					successTxs = append(successTxs, lastReceipt.TxHash)
+					failedIdx = idx + 1
+				}
+				candidates = candidates[failedIdx:]
 
-	l.metr.RecordBatchTxConfirmDataSuccess()
-	l.recordConfirmedEigenDATx(lastReceipt)
+				if len(candidates) > 0 {
+					l.log.Warn("failed to rollup", "err", err, "retry time", loopRetry)
+				} else {
+					l.log.Info("rollup success", "success txs", successTxs)
+					break
+				}
+			}
+
+			if len(candidates) > 0 {
+				err = fmt.Errorf("failed to rollup %d tx candidates", len(candidates))
+				l.log.Error("failed to rollup", "err", err)
+				l.metr.RecordBatchTxConfirmDataFailed()
+				return false, err
+			}
+
+			for _, id := range daUnConfirmedTxID {
+				l.state.TxConfirmed(id, eth.BlockID{Number: lastReceipt.BlockNumber.Uint64(), Hash: lastReceipt.BlockHash})
+			}
+
+			l.metr.RecordBatchTxConfirmDataSuccess()
+		default:
+			finished = true
+		}
+	}
 
 	//create a new channel now for reducing the disperseEigenDaData latency time
-	if err = l.state.ensurePendingChannel(currentL1.ID()); err != nil {
-		l.log.Error("failed to ensurePendingChannel", "err", err)
-		return false, err
-	}
-	l.state.registerL1Block(currentL1.ID())
+	// if err = l.state.ensurePendingChannel(currentL1.ID()); err != nil {
+	// 	l.log.Error("failed to ensurePendingChannel", "err", err)
+	// 	return false, err
+	// }
+	// l.state.registerL1Block(currentL1.ID())
 
 	return true, nil
 

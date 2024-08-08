@@ -28,6 +28,12 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/upgrade"
 )
 
+type disperseResult struct {
+	txs               []*txmgr.TxCandidate
+	daUnConfirmedTxID []frameID
+	err               error
+}
+
 // BatchSubmitter encapsulates a service responsible for submitting L2 tx
 // batches to L1 for availability.
 type BatchSubmitter struct {
@@ -48,8 +54,9 @@ type BatchSubmitter struct {
 	lastStoredBlock eth.BlockID
 	lastL1Tip       eth.L1BlockRef
 
-	state   *channelManager
-	eigenDA eigenda.IEigenDA
+	state          *channelManager
+	eigenDA        eigenda.IEigenDA
+	disperseResult chan disperseResult
 }
 
 // NewBatchSubmitterFromCLIConfig initializes the BatchSubmitter, gathering any resources
