@@ -57,6 +57,7 @@ func (l *BatchSubmitter) mantleDALoop() {
 				}
 				l.state.Clear()
 				l.state.clearMantleDAStatus()
+				l.disperseResult = make(chan disperseResult)
 				continue
 			} else if err != nil {
 				l.log.Error("load block into state err", "err", err)
@@ -228,7 +229,7 @@ func (l *BatchSubmitter) loopEigenDa() (bool, error) {
 	unconfirmedTxIDCopy := make([]frameID, len(l.state.daUnConfirmedTxID))
 	copy(unconfirmedTxIDCopy, l.state.daUnConfirmedTxID)
 
-	go func(daUnConfirmedTxID []frameID) {
+	go func(daUnConfirmedTxID []frameID, output chan disperseResult) {
 		var err error
 		var wrappedData []byte
 		var eigendaSuccess = false
@@ -259,15 +260,15 @@ func (l *BatchSubmitter) loopEigenDa() (bool, error) {
 		} else {
 			if blobCandidates, err := l.blobTxCandidates(daData); err != nil {
 				l.log.Warn("failed to create blob tx candidate", "err", err)
-				l.disperseResult <- disperseResult{nil, nil, err}
+				output <- disperseResult{nil, nil, err}
 				return
 			} else {
 				candidates = append(candidates, blobCandidates...)
 				l.metr.RecordEigenDAFailback(len(blobCandidates))
 			}
 		}
-		l.disperseResult <- disperseResult{candidates, daUnConfirmedTxID, nil}
-	}(unconfirmedTxIDCopy)
+		output <- disperseResult{candidates, daUnConfirmedTxID, nil}
+	}(unconfirmedTxIDCopy, l.disperseResult)
 
 	// delete all unconfirmed tx
 	for _, id := range l.state.daUnConfirmedTxID {
