@@ -849,4 +849,5 @@ func (l *BatchSubmitter) reset() {
 	l.state.clearPendingChannel()
 	l.state.clearMantleDAStatus()
 	l.lastStoredBlock = eth.BlockID{}
+	l.disperseResult = make(chan disperseResult, 10)
 }
