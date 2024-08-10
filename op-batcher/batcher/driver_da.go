@@ -351,12 +351,12 @@ func (l *BatchSubmitter) loopEigenDa() (bool, error) {
 		}
 	}
 
-	//create a new channel now for reducing the disperseEigenDaData latency time
-	// if err = l.state.ensurePendingChannel(currentL1.ID()); err != nil {
-	// 	l.log.Error("failed to ensurePendingChannel", "err", err)
-	// 	return false, err
-	// }
-	// l.state.registerL1Block(currentL1.ID())
+	//create a new channel now for reducing the send batch blob latency time
+	if err = l.state.ensurePendingChannel(currentL1.ID()); err != nil {
+		l.log.Error("failed to ensurePendingChannel", "err", err)
+		return false, err
+	}
+	l.state.registerL1Block(currentL1.ID())
 
 	return true, nil
 
