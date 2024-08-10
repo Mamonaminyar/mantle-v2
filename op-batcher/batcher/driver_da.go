@@ -267,6 +267,7 @@ func (l *BatchSubmitter) loopEigenDa() (bool, error) {
 				l.metr.RecordEigenDAFailback(len(blobCandidates))
 			}
 		}
+		l.log.Info("create candidates success", "size", len(candidates))
 		output <- disperseResult{candidates, daUnConfirmedTxID, nil}
 	}(unconfirmedTxIDCopy, l.disperseResult)
 
@@ -345,6 +346,7 @@ func (l *BatchSubmitter) loopEigenDa() (bool, error) {
 
 			l.metr.RecordBatchTxConfirmDataSuccess()
 		default:
+			l.log.Info("finish all candidates tx")
 			finished = true
 		}
 	}
