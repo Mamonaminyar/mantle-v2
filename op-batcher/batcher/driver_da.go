@@ -57,7 +57,7 @@ func (l *BatchSubmitter) mantleDALoop() {
 				}
 				l.state.Clear()
 				l.state.clearMantleDAStatus()
-				l.disperseResult = make(chan disperseResult)
+				l.disperseResult = make(chan disperseResult, 10)
 				continue
 			} else if err != nil {
 				l.log.Error("load block into state err", "err", err)

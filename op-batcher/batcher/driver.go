@@ -201,7 +201,7 @@ func NewBatchSubmitter(ctx context.Context, cfg Config, l log.Logger, m metrics.
 		txMgr:          cfg.TxManager,
 		state:          NewChannelManager(l, m, cfg.Channel, cfg.DaUpgradeChainConfig),
 		eigenDA:        eigenDA,
-		disperseResult: make(chan disperseResult),
+		disperseResult: make(chan disperseResult, 10),
 	}, nil
 
 }
