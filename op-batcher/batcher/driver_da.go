@@ -219,11 +219,11 @@ func (l *BatchSubmitter) loopEigenDa() (bool, error) {
 		return false, err
 	}
 
-	// currentL1, err := l.l1Tip(l.killCtx)
-	// if err != nil {
-	// 	l.log.Warn("loopEigenDa l1Tip", "err", err)
-	// 	return false, err
-	// }
+	currentL1, err := l.l1Tip(l.killCtx)
+	if err != nil {
+		l.log.Warn("loopEigenDa l1Tip", "err", err)
+		return false, err
+	}
 
 	l.log.Info("disperseEigenDaData", "skip da rpc", l.Config.SkipEigenDaRpc)
 	unconfirmedTxIDCopy := make([]frameID, len(l.state.daUnConfirmedTxID))
@@ -270,9 +270,16 @@ func (l *BatchSubmitter) loopEigenDa() (bool, error) {
 		output <- disperseResult{candidates, daUnConfirmedTxID, nil}
 	}(unconfirmedTxIDCopy, l.disperseResult)
 
-	// delete all unconfirmed tx
+	// ChannelTimeout check here is not in TxConfirmed.
+	// Using daDispersedTxID for checking ChannelTimeout later.
+	for id := range l.state.pendingTransactions {
+		if _, ok := l.state.daDispersedTxID[id]; !ok {
+			l.state.daDispersedTxID[id] = eth.BlockID{}
+		}
+	}
+
 	for _, id := range l.state.daUnConfirmedTxID {
-		//l.state.TxConfirmed(id, l1block)
+		l.state.TxConfirmed(id, eth.BlockID{Number: currentL1.Number, Hash: currentL1.Hash})
 		l.daTxDataConfirmed(id)
 	}
 
@@ -284,18 +291,29 @@ func (l *BatchSubmitter) loopEigenDa() (bool, error) {
 				l.log.Error("get candidates err", "err", err)
 				return false, err
 			}
-			var lastReceipt *types.Receipt
+
+			if len(daUnConfirmedTxID) == 0 || len(candidates) == 0 {
+				l.log.Error("get empty data from disperseResult")
+				return true, fmt.Errorf("get empty data from disperseResult")
+			}
+
+			chID := daUnConfirmedTxID[0].chID
+
+			var firstReceipt *types.Receipt
 			var successTxs []ecommon.Hash
 			for loopRetry := 0; loopRetry < DaLoopRetryNum; loopRetry++ {
 				l.metr.RecordRollupRetry(int32(loopRetry))
 				failedIdx := 0
 				for idx, tx := range candidates {
-					lastReceipt, err = l.txMgr.Send(l.killCtx, *tx)
-					if err != nil || lastReceipt.Status == types.ReceiptStatusFailed {
+					receipt, err := l.txMgr.Send(l.killCtx, *tx)
+					if err != nil || receipt.Status == types.ReceiptStatusFailed {
 						l.log.Warn("failed to send tx candidate", "err", err)
 						break
 					}
-					successTxs = append(successTxs, lastReceipt.TxHash)
+					if firstReceipt == nil {
+						firstReceipt = receipt
+					}
+					successTxs = append(successTxs, receipt.TxHash)
 					failedIdx = idx + 1
 				}
 				candidates = candidates[failedIdx:]
@@ -316,8 +334,14 @@ func (l *BatchSubmitter) loopEigenDa() (bool, error) {
 			}
 
 			for _, id := range daUnConfirmedTxID {
-				l.state.TxConfirmed(id, eth.BlockID{Number: lastReceipt.BlockNumber.Uint64(), Hash: lastReceipt.BlockHash})
+				l.state.daDispersedTxID[id] = eth.BlockID{Number: firstReceipt.BlockNumber.Uint64(), Hash: firstReceipt.BlockHash}
 			}
+
+			if l.state.isDaDispersedTimeout(chID) {
+				l.log.Warn("Channel timed out", "id", chID)
+				return false, fmt.Errorf("Channel timed out")
+			}
+			l.state.cleanUpDaDispersed(chID)
 
 			l.metr.RecordBatchTxConfirmDataSuccess()
 		default:
@@ -513,7 +537,7 @@ func (l *BatchSubmitter) txAggregator() ([]byte, error) {
 }
 
 func (l *BatchSubmitter) txAggregatorForEigenDa() ([][]byte, error) {
-	var txsData [][]byte
+	var tempTxsData, txsData [][]byte
 	var transactionByte []byte
 	sortTxIds := make([]txID, 0, len(l.state.daPendingTxData))
 	l.state.daUnConfirmedTxID = l.state.daUnConfirmedTxID[:0]
@@ -525,8 +549,8 @@ func (l *BatchSubmitter) txAggregatorForEigenDa() ([][]byte, error) {
 	})
 	for _, v := range sortTxIds {
 		txData := l.state.daPendingTxData[v]
-		txsData = append(txsData, txData.Bytes())
-		txnBufBytes, err := rlp.EncodeToBytes(txsData)
+		tempTxsData = append(tempTxsData, txData.Bytes())
+		txnBufBytes, err := rlp.EncodeToBytes(tempTxsData)
 		if err != nil {
 			l.log.Error("op-batcher unable to encode txn", "err", err)
 			return nil, err
@@ -536,6 +560,7 @@ func (l *BatchSubmitter) txAggregatorForEigenDa() ([][]byte, error) {
 			l.metr.RecordTxOverMaxLimit()
 			break
 		}
+		txsData = tempTxsData
 		transactionByte = txnBufBytes
 		l.state.daUnConfirmedTxID = append(l.state.daUnConfirmedTxID, v)
 		l.log.Info("added frame to daUnConfirmedTxID", "id", v.String())

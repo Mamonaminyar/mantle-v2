@@ -51,6 +51,8 @@ type channelManager struct {
 	daPendingTxData map[txID]txData
 	//Set of unconfirmed txID
 	daUnConfirmedTxID []txID
+	//Set of dispersed txID. For ChannelTimeout check
+	daDispersedTxID map[txID]eth.BlockID
 	// params of initStoreData on MantleDA
 	params *bcommon.StoreParams
 	//receipt of initStoreData transaction on L1
@@ -68,6 +70,7 @@ func NewChannelManager(log log.Logger, metr metrics.Metricer, cfg ChannelConfig,
 		pendingTransactions:   make(map[txID]txData),
 		confirmedTransactions: make(map[txID]eth.BlockID),
 		daPendingTxData:       make(map[txID]txData),
+		daDispersedTxID:       make(map[txID]eth.BlockID),
 	}
 }
 
@@ -148,6 +151,7 @@ func (s *channelManager) clearMantleDAStatus() {
 	s.initStoreDataReceipt = nil
 	s.daPendingTxData = make(map[txID]txData)
 	s.daUnConfirmedTxID = s.daUnConfirmedTxID[:0]
+	s.daDispersedTxID = make(map[txID]eth.BlockID)
 	s.metr.RecordRollupRetry(0)
 }
 
@@ -412,4 +416,47 @@ func (s *channelManager) Close() error {
 	s.pendingChannel.Close()
 
 	return s.outputFrames()
+}
+
+func (s *channelManager) isDaDispersedTimeout(chID derive.ChannelID) bool {
+	//Find the first + last dispersed block numbers
+	min := uint64(math.MaxUint64)
+	max := uint64(0)
+	for dispersedId, block := range s.daDispersedTxID {
+		var empty eth.BlockID
+		if block == empty {
+			continue
+		}
+
+		if chID == dispersedId.chID {
+			if block.Number < min {
+				min = block.Number
+			}
+			if block.Number > max {
+				max = block.Number
+			}
+		}
+	}
+
+	return min+s.cfg.ChannelTimeout < max
+}
+
+func (s *channelManager) cleanUpDaDispersed(chID derive.ChannelID) {
+	frameInChannel := []frameID{}
+	for frameID, block := range s.daDispersedTxID {
+		if frameID.chID != chID {
+			continue
+		}
+
+		var empty eth.BlockID
+		if block == empty {
+			return
+		}
+		frameInChannel = append(frameInChannel, frameID)
+	}
+
+	for _, frameID := range frameInChannel {
+		delete(s.daDispersedTxID, frameID)
+	}
+
 }
